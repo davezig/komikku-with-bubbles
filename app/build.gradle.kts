@@ -259,6 +259,9 @@ dependencies {
 
     // HTML parser
     implementation(libs.jsoup)
+    // KMK -->
+    implementation(libs.tensorflow.lite)
+    // KMK <--
 
     // Disk
     implementation(libs.disklrucache)
