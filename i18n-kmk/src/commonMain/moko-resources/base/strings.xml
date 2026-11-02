@@ -238,4 +238,13 @@
     <string name="pref_discord_show_download_button_summary">Displays a button to download the app</string>
     <string name="pref_discord_show_discord_button">Show Discord Button</string>
     <string name="pref_discord_show_discord_button_summary">Displays a button to join the Discord server</string>
+    <!-- KMK: Bubbles & Panels settings -->
+    <string name="pref_category_bubbles_panels">Bubbles &amp; Panels</string>
+    <string name="pref_bubbles_panels_summary">Balloon and panel detection, zoom</string>
+    <string name="pref_bubbles_show_outlines">Show detection outlines</string>
+    <string name="pref_bubbles_show_outlines_summary">Draw outlines around detected balloons and panels</string>
+    <string name="pref_bubbles_detection_confidence">Detection confidence</string>
+    <string name="pref_bubbles_detection_confidence_summary">Lower values (0.1) find more balloons but also more false alarms. Higher values (0.9) show only detections the model is very sure of, but miss some balloons.</string>
+    <string name="pref_bubbles_balloon_zoom_factor">Balloon zoom level</string>
+    <string name="pref_bubbles_balloon_zoom_factor_summary">Magnification when a balloon is tapped</string>
 </resources>

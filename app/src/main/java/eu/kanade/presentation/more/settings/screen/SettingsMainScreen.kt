@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Palette
@@ -201,6 +202,14 @@ object SettingsMainScreen : Screen() {
             icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
             screen = SettingsReaderScreen,
         ),
+        // KMK -->
+        Item(
+            titleRes = KMR.strings.pref_category_bubbles_panels,
+            subtitleRes = KMR.strings.pref_bubbles_panels_summary,
+            icon = Icons.Outlined.Image,
+            screen = SettingsBubblesPanelsScreen,
+        ),
+        // KMK <--
         Item(
             titleRes = MR.strings.pref_category_downloads,
             subtitleRes = MR.strings.pref_downloads_summary,
