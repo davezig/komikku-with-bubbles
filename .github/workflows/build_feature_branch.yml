@@ -1,8 +1,10 @@
-# KMK: fork-only workflow. Runs format check, unit tests and a debug build on pushes to feature branches.
-name: Feature branch build
+# KMK: fork-only workflow. Runs format check, unit tests and a debug build on pushes to master and feature
+# branches. Debug builds are signed with the committed debug key, so each one installs over the last.
+name: Debug build
 on:
   push:
     branches:
+      - master
       - 'feat/**'
   workflow_dispatch:
 

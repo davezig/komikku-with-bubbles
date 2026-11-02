@@ -2,8 +2,9 @@
 name: Mirror Sync
 
 on:
-  push:
-    branches: [ "master" ]
+  # KMK: disabled on push in this private fork; it mirrors upstream Komikku to Codeberg.
+  # push:
+  #   branches: [ "master" ]
   workflow_dispatch: # Manual dispatch
   # schedule:
   #   - cron: "0 */8 * * *"

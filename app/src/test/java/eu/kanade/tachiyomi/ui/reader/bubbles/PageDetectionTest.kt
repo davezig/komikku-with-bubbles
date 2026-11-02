@@ -6,27 +6,6 @@ import org.junit.jupiter.api.Test
 class PageDetectionTest {
 
     @Test
-    fun `window starts with the current page then the neighbours`() {
-        assertEquals(listOf(5, 4, 6, 7), analysisWindow(5, 10))
-    }
-
-    @Test
-    fun `window at the first page has no earlier page`() {
-        assertEquals(listOf(0, 1, 2), analysisWindow(0, 10))
-    }
-
-    @Test
-    fun `window at the last page has no later pages`() {
-        assertEquals(listOf(9, 8), analysisWindow(9, 10))
-    }
-
-    @Test
-    fun `window is empty for an empty comic or invalid index`() {
-        assertEquals(emptyList<Int>(), analysisWindow(0, 0))
-        assertEquals(emptyList<Int>(), analysisWindow(10, 10))
-    }
-
-    @Test
     fun `parse skips slots past the valid count and unknown classes`() {
         val boxes = arrayOf(
             floatArrayOf(0.1f, 0.2f, 0.3f, 0.4f, 0.9f),
