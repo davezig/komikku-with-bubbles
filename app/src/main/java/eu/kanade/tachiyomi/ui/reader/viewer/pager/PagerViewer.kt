@@ -19,12 +19,14 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderItem
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -39,6 +41,13 @@ abstract class PagerViewer(
 ) : Viewer {
 
     val downloadManager: DownloadManager by injectLazy()
+
+    // KMK -->
+    private val bubblesPanelsPreferences: BubblesPanelsPreferences by injectLazy()
+
+    /** Whether panel view is on: page turns step one panel at a time. */
+    private var isPanelView = bubblesPanelsPreferences.panelViewEnabled().get()
+    // KMK <--
 
     val scope = MainScope()
 
@@ -137,6 +146,10 @@ abstract class PagerViewer(
                 NavigationRegion.LEFT -> moveLeft()
             }
         }
+        // KMK -->
+        pager.isPanelSwipeMode = isPanelView
+        pager.flingListener = ::onPanelFling
+        // KMK <--
         pager.longTapListener = f@{
             if (activity.viewModel.state.value.menuVisible || config.longTapEnabled) {
                 val item = adapter.joinedItems.getOrNull(pager.currentItem)
@@ -188,6 +201,34 @@ abstract class PagerViewer(
     }
 
     // KMK -->
+    /** Turns panel view on or off for the open comic, starting from the first panel of the current page. */
+    fun setPanelViewEnabled(enabled: Boolean) {
+        isPanelView = enabled
+        pager.isPanelSwipeMode = enabled
+        val holder = (currentPage as? ReaderPage)?.let(::getPageHolder) ?: return
+        if (enabled) holder.startPanelView(atEnd = false) else holder.stopPanelView()
+    }
+
+    /** In panel view, moves one panel forward or back on the current page. Returns false at the page's end. */
+    private fun stepPanel(forward: Boolean): Boolean {
+        if (!isPanelView) return false
+        val holder = (currentPage as? ReaderPage)?.let(::getPageHolder) ?: return false
+        return if (forward) holder.nextPanel() else holder.previousPanel()
+    }
+
+    /** In panel view, a swipe in the reading direction goes to the next panel, the other way to the previous. */
+    private fun onPanelFling(velocityX: Float, velocityY: Float) {
+        val vertical = this is VerticalPagerViewer
+        if (vertical && abs(velocityY) < abs(velocityX)) return
+        if (!vertical && abs(velocityX) < abs(velocityY)) return
+        val forward = when {
+            vertical -> velocityY < 0
+            this is R2LPagerViewer -> velocityX > 0
+            else -> velocityX < 0
+        }
+        if (forward) moveToNext() else moveToPrevious()
+    }
+
     /** Lets the current page open or close a magnified balloon. Returns true if it used the tap. */
     private fun handleBubbleTap(event: MotionEvent): Boolean {
         val page = adapter.joinedItems.getOrNull(pager.currentItem)?.first as? ReaderPage ?: return false
@@ -378,6 +419,9 @@ abstract class PagerViewer(
      * Moves to the page at the right.
      */
     protected open fun moveRight() {
+        // KMK -->
+        if (stepPanel(forward = this !is R2LPagerViewer)) return
+        // KMK <--
         if (pager.currentItem != adapter.count - 1) {
             val holder = (currentPage as? ReaderPage)?.let(::getPageHolder)
             if (holder != null && config.navigateToPan && holder.canPanRight()) {
@@ -392,6 +436,9 @@ abstract class PagerViewer(
      * Moves to the page at the left.
      */
     protected open fun moveLeft() {
+        // KMK -->
+        if (stepPanel(forward = this is R2LPagerViewer)) return
+        // KMK <--
         if (pager.currentItem != 0) {
             val holder = (currentPage as? ReaderPage)?.let(::getPageHolder)
             if (holder != null && config.navigateToPan && holder.canPanLeft()) {

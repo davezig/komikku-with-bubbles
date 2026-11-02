@@ -28,6 +28,14 @@ open class Pager(
      */
     var longTapListener: ((MotionEvent) -> Boolean)? = null
 
+    // KMK -->
+    /** In panel view, swipes step through panels, so the pager must not turn pages by dragging. */
+    var isPanelSwipeMode = false
+
+    /** Fling listener used by panel view, with the fling's horizontal and vertical velocity. */
+    var flingListener: ((velocityX: Float, velocityY: Float) -> Unit)? = null
+    // KMK <--
+
     // SY -->
     var isRestoring = false
 
@@ -48,6 +56,19 @@ open class Pager(
             tapListener?.invoke(ev)
             return true
         }
+
+        // KMK -->
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent,
+            velocityX: Float,
+            velocityY: Float,
+        ): Boolean {
+            if (!isPanelSwipeMode) return false
+            flingListener?.invoke(velocityX, velocityY)
+            return true
+        }
+        // KMK <--
 
         override fun onLongTapConfirmed(ev: MotionEvent) {
             val listener = longTapListener
@@ -83,6 +104,9 @@ open class Pager(
      * views manipulate [requestDisallowInterceptTouchEvent].
      */
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        // KMK -->
+        if (isPanelSwipeMode) return false
+        // KMK <--
         return try {
             super.onInterceptTouchEvent(ev)
         } catch (e: IllegalArgumentException) {

@@ -95,6 +95,7 @@ import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -166,6 +167,10 @@ class ReaderActivity : BaseActivity() {
     }
 
     private val readerPreferences = Injekt.get<ReaderPreferences>()
+
+    // KMK -->
+    private val bubblesPanelsPreferences = Injekt.get<BubblesPanelsPreferences>()
+    // KMK <--
     private val preferences = Injekt.get<BasePreferences>()
 
     // KMK -->
@@ -665,6 +670,9 @@ class ReaderActivity : BaseActivity() {
         val readerBottomButtons by readerPreferences.readerBottomButtons().changes().map { it.toImmutableSet() }
             .collectAsState(persistentSetOf())
         val dualPageSplitPaged by readerPreferences.dualPageSplitPaged().collectAsState()
+        // KMK -->
+        val panelViewEnabled by bubblesPanelsPreferences.panelViewEnabled().collectAsState()
+        // KMK <--
 
         val forceHorizontalSeekbar by readerPreferences.forceHorizontalSeekbar().collectAsState()
         val landscapeVerticalSeekbar by readerPreferences.landscapeVerticalSeekbar().collectAsState()
@@ -757,6 +765,16 @@ class ReaderActivity : BaseActivity() {
             },
             onClickShiftPage = ::shiftDoublePages,
             // SY <--
+            // KMK -->
+            panelViewEnabled = panelViewEnabled,
+            onClickPanelView = {
+                val enabled = !bubblesPanelsPreferences.panelViewEnabled().get()
+                bubblesPanelsPreferences.panelViewEnabled().set(enabled)
+                (viewModel.state.value.viewer as? PagerViewer)?.setPanelViewEnabled(enabled)
+                menuToggleToast?.cancel()
+                menuToggleToast = toast(if (enabled) KMR.strings.panel_view_on else KMR.strings.panel_view_off)
+            },
+            // KMK <--
         )
     }
 

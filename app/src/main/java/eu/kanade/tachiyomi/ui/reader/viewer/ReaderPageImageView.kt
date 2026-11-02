@@ -43,16 +43,21 @@ import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleMagnifier
 import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
 import eu.kanade.tachiyomi.ui.reader.bubbles.DetectionKind
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
+import eu.kanade.tachiyomi.ui.reader.bubbles.PageRegion
+import eu.kanade.tachiyomi.ui.reader.bubbles.PanelMaskView
 import eu.kanade.tachiyomi.ui.reader.bubbles.balloonReadingOrder
 import eu.kanade.tachiyomi.ui.reader.bubbles.paddedRegion
 import eu.kanade.tachiyomi.ui.reader.bubbles.placeMagnifier
+import eu.kanade.tachiyomi.ui.reader.bubbles.planPanelView
 import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
 import okio.BufferedSource
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.ImageUtil
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.math.abs
@@ -88,6 +93,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var magnifiedBalloon: PageDetection? = null
     private val touchStarts = HashMap<Int, PointF>()
     private var isTwoFingerTap = false
+    private var panelMaskView: PanelMaskView? = null
+    private var bubbleInkOutsidePanels = 0f
+    private var panelSteps: List<PageRegion> = emptyList()
+    private var panelIndex = 0
+    private var isPanelViewActive = false
+
+    // Panel view was asked for before the page or its detections were ready. True means start at the last panel.
+    private var pendingPanelStartAtEnd: Boolean? = null
     // KMK <--
 
     private var config: Config? = null
@@ -108,6 +121,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         background = pageBackground
         // KMK -->
         outlineView?.invalidate()
+        tryStartPendingPanelView()
         // KMK <--
     }
 
@@ -129,6 +143,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
     open fun onPageSelected(forward: Boolean) {
         // KMK -->
         dismissBubbleZoom()
+        if (bubblesPreferences.panelViewEnabled().get()) {
+            startPanelView(atEnd = !forward)
+        } else {
+            stopPanelView()
+        }
         // KMK <--
         with(pageView as? SubsamplingScaleImageView) {
             if (this == null) return
@@ -214,14 +233,109 @@ open class ReaderPageImageView @JvmOverloads constructor(
      * Sets the balloons and panels found on this page and the page's image file, used to magnify a tapped
      * balloon. Outlines are drawn only when the outline setting is on.
      */
-    fun setBubbleData(detections: List<PageDetection>, imageBytes: ByteArray?) {
+    fun setBubbleData(detections: List<PageDetection>, imageBytes: ByteArray?, inkOutsidePanels: Float = 0f) {
         dismissBubbleZoom()
         bubbleDetections = detections
         bubbleImageBytes = imageBytes
-        val overlay = outlineView ?: return
-        overlay.detections = detections
-        overlay.isVisible = detections.isNotEmpty() && bubblesPreferences.showDetectionOutlines().get()
-        overlay.invalidate()
+        bubbleInkOutsidePanels = inkOutsidePanels
+        outlineView?.let { overlay ->
+            overlay.detections = detections
+            overlay.isVisible = detections.isNotEmpty() && bubblesPreferences.showDetectionOutlines().get()
+            overlay.invalidate()
+        }
+        if (imageBytes == null) {
+            // The page is being reloaded; its panels are no longer known.
+            isPanelViewActive = false
+            panelMaskView?.region = null
+            panelMaskView?.note = null
+        } else {
+            tryStartPendingPanelView()
+        }
+    }
+
+    /** Starts panel view on this page, at the first panel or, when [atEnd], at the last one. */
+    fun startPanelView(atEnd: Boolean) {
+        pendingPanelStartAtEnd = atEnd
+        tryStartPendingPanelView()
+    }
+
+    /** Leaves panel view and shows the whole page again. */
+    fun stopPanelView() {
+        pendingPanelStartAtEnd = null
+        if (!isPanelViewActive) return
+        isPanelViewActive = false
+        panelSteps = emptyList()
+        panelMaskView?.region = null
+        panelMaskView?.note = null
+        (pageView as? SubsamplingScaleImageView)?.let(::showWholePage)
+    }
+
+    /** Shows the next panel. Returns false when there is none, so the reader can turn the page. */
+    fun nextPanel(): Boolean {
+        val image = pageView as? SubsamplingScaleImageView
+        if (!isPanelViewActive || image == null || panelIndex >= panelSteps.lastIndex) return false
+        panelIndex++
+        showPanelStep(image)
+        return true
+    }
+
+    /** Shows the previous panel. Returns false when there is none, so the reader can turn the page. */
+    fun previousPanel(): Boolean {
+        val image = pageView as? SubsamplingScaleImageView
+        if (!isPanelViewActive || image == null || panelIndex <= 0) return false
+        panelIndex--
+        showPanelStep(image)
+        return true
+    }
+
+    private fun tryStartPendingPanelView() {
+        val atEnd = pendingPanelStartAtEnd ?: return
+        val image = readyBubbleImage() ?: return
+        pendingPanelStartAtEnd = null
+        val plan = planPanelView(
+            detections = bubbleDetections,
+            inkOutsidePanels = bubbleInkOutsidePanels,
+            threshold = bubblesPreferences.detectionConfidence().get(),
+            rightToLeft = bubbleReadRightToLeft,
+            fullPageAfterLast = bubblesPreferences.panelViewFullPageAfterLast().get(),
+        )
+        panelSteps = plan.steps
+        panelIndex = if (atEnd) plan.steps.lastIndex else 0
+        isPanelViewActive = true
+        panelMaskView?.note = if (plan.usedFullPage) context.stringResource(KMR.strings.panel_view_full_page) else null
+        showPanelStep(image)
+    }
+
+    /** Zooms to the current panel and covers the rest of the page. */
+    private fun showPanelStep(image: SubsamplingScaleImageView) {
+        dismissBubbleZoom()
+        val step = panelSteps.getOrNull(panelIndex) ?: return
+        panelMaskView?.region = step
+        if (step.isFullPage) {
+            showWholePage(image)
+            return
+        }
+        val sourceWidth = image.sWidth.toFloat()
+        val sourceHeight = image.sHeight.toFloat()
+        val scale = minOf(
+            width / ((step.right - step.left) * sourceWidth),
+            height / ((step.bottom - step.top) * sourceHeight),
+        )
+        image.maxScale = maxOf(image.maxScale, scale)
+        val center = PointF((step.left + step.right) / 2 * sourceWidth, (step.top + step.bottom) / 2 * sourceHeight)
+        image.animateScaleAndCenter(scale, center)
+            ?.withDuration(PANEL_ANIMATION_MS)
+            ?.withInterruptible(false)
+            ?.start()
+    }
+
+    private fun showWholePage(image: SubsamplingScaleImageView) {
+        if (!image.isReady) return
+        val center = PointF(image.sWidth / 2f, image.sHeight / 2f)
+        image.animateScaleAndCenter(image.minScale, center)
+            ?.withDuration(PANEL_ANIMATION_MS)
+            ?.withInterruptible(false)
+            ?.start()
     }
 
     /**
@@ -292,15 +406,19 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         // While a balloon is magnified, keep touches from the page so a two-finger tap doesn't zoom it.
-        if (bubbleMagnifier.isShowing) return true
+        // In panel view, keep them from the page so swipes step through panels instead of panning.
+        if (bubbleMagnifier.isShowing || isPanelViewActive) return true
         return super.onInterceptTouchEvent(ev)
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!bubbleMagnifier.isShowing) return super.onTouchEvent(event)
-        trackTwoFingerTap(event)
-        return true
+        if (bubbleMagnifier.isShowing) {
+            trackTwoFingerTap(event)
+            return true
+        }
+        if (isPanelViewActive) return true
+        return super.onTouchEvent(event)
     }
 
     /** Detects a quick two-finger tap that barely moves, and then shows the next balloon. */
@@ -439,6 +557,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
         // KMK -->
         outlineView?.let { removeView(it) }
         outlineView = null
+        panelMaskView?.let { removeView(it) }
+        panelMaskView = null
         // KMK <--
         removeView(pageView)
 
@@ -457,6 +577,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         this@ReaderPageImageView.onScaleChanged(newScale)
                         // KMK -->
                         outlineView?.invalidate()
+                        panelMaskView?.invalidate()
                         dismissBubbleZoom()
                         // KMK <--
                     }
@@ -464,6 +585,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     override fun onCenterChanged(newCenter: PointF?, origin: Int) {
                         // KMK -->
                         outlineView?.invalidate()
+                        panelMaskView?.invalidate()
                         dismissBubbleZoom()
                         // KMK <--
                     }
@@ -477,6 +599,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
             overlay.source = pageView as? SubsamplingScaleImageView
             overlay.isVisible = false
             addView(overlay, MATCH_PARENT, MATCH_PARENT)
+        }
+        panelMaskView = PanelMaskView(context).also { mask ->
+            mask.source = pageView as? SubsamplingScaleImageView
+            addView(mask, MATCH_PARENT, MATCH_PARENT)
         }
         // KMK <--
     }
@@ -674,4 +800,7 @@ private const val MAX_ZOOM_SCALE = 5F
 // KMK -->
 // Extra space around a magnified balloon, as a fraction of its size on each side.
 private const val BUBBLE_ZOOM_PADDING = 0.06f
+
+// How long moving between panels takes, in milliseconds.
+private const val PANEL_ANIMATION_MS = 250L
 // KMK <--

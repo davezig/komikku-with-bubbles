@@ -15,5 +15,11 @@ class BubblesPanelsPreferences(
 
     /** Magnification applied to a balloon when it is tapped. */
     fun balloonZoomFactor() = preferenceStore.getFloat("pref_bubbles_balloon_zoom_factor", 2.0f)
+
+    /** Panel view: show one panel at a time. Toggled from the reader's bottom bar. */
+    fun panelViewEnabled() = preferenceStore.getBoolean("pref_bubbles_panel_view_enabled", false)
+
+    /** In panel view, show the whole page after the last panel of each page. */
+    fun panelViewFullPageAfterLast() = preferenceStore.getBoolean("pref_bubbles_panel_view_full_page_after", false)
 }
 // KMK <--

@@ -3,6 +3,7 @@ package eu.kanade.presentation.reader.appbars
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CropFree
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Public
@@ -22,6 +23,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import kotlinx.collections.immutable.ImmutableSet
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -48,6 +50,10 @@ fun ReaderBottomBar(
     onClickPageLayout: () -> Unit,
     onClickShiftPage: () -> Unit,
     // SY <--
+    // KMK -->
+    panelViewEnabled: Boolean,
+    onClickPanelView: () -> Unit,
+    // KMK <--
     modifier: Modifier = Modifier,
 ) {
     // KMK -->
@@ -166,6 +172,21 @@ fun ReaderBottomBar(
                 )
             }
         }
+
+        // KMK -->
+        if (
+            ReaderBottomButton.PanelView.isIn(enabledButtons) &&
+            ReadingMode.isPagerType(currentReadingMode.flagValue)
+        ) {
+            IconButton(onClick = onClickPanelView) {
+                Icon(
+                    imageVector = Icons.Outlined.CropFree,
+                    contentDescription = stringResource(KMR.strings.panel_view),
+                    tint = if (panelViewEnabled) iconColor else iconColor.copy(alpha = 0.45f),
+                )
+            }
+        }
+        // KMK <--
 
         if (doublePages) {
             IconButton(onClick = onClickShiftPage) {

@@ -99,6 +99,10 @@ fun ReaderAppBars(
     onClickPageLayout: () -> Unit,
     onClickShiftPage: () -> Unit,
     // SY <--
+    // KMK -->
+    panelViewEnabled: Boolean,
+    onClickPanelView: () -> Unit,
+    // KMK <--
 ) {
     val isRtl = viewer is R2LPagerViewer
     val backgroundColor = MaterialTheme.colorScheme
@@ -275,6 +279,10 @@ fun ReaderAppBars(
                     onClickPageLayout = onClickPageLayout,
                     onClickShiftPage = onClickShiftPage,
                     // SY <--
+                    // KMK -->
+                    panelViewEnabled = panelViewEnabled,
+                    onClickPanelView = onClickPanelView,
+                    // KMK <--
                 )
             }
         }

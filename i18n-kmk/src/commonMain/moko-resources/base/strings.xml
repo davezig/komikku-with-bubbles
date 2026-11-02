@@ -247,4 +247,10 @@
     <string name="pref_bubbles_detection_confidence_summary">Lower values (0.1) find more balloons but also more false alarms. Higher values (0.9) show only detections the model is very sure of, but miss some balloons.</string>
     <string name="pref_bubbles_balloon_zoom_factor">Balloon zoom level</string>
     <string name="pref_bubbles_balloon_zoom_factor_summary">Magnification when a balloon is tapped</string>
+    <string name="pref_bubbles_panel_view_full_page_after">Show full page after last panel</string>
+    <string name="pref_bubbles_panel_view_full_page_after_summary">In panel view, show the whole page after the last panel so nothing is skipped</string>
+    <string name="panel_view">Panel view</string>
+    <string name="panel_view_on">Panel view on</string>
+    <string name="panel_view_off">Panel view off</string>
+    <string name="panel_view_full_page">Panels unclear, showing full page</string>
 </resources>

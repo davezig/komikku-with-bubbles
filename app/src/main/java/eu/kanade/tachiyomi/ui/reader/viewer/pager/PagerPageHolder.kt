@@ -10,8 +10,10 @@ import androidx.core.view.isVisible
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.bubbles.DetectionKind
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetector
+import eu.kanade.tachiyomi.ui.reader.bubbles.inkOutsidePanels
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
@@ -256,8 +258,8 @@ class PagerPageHolder(
             // KMK -->
             // Find balloons after the page is shown, so detection never delays the image.
             bubbleImageBytes?.let { bytes ->
-                val found = withContext(Dispatchers.Default) { detectBubbles(bytes) }
-                withUIContext { setBubbleData(found, bytes) }
+                val (found, inkOutsidePanels) = withContext(Dispatchers.Default) { detectBubbles(bytes) }
+                withUIContext { setBubbleData(found, bytes, inkOutsidePanels) }
             }
             // KMK <--
         } catch (e: Throwable) {
@@ -383,18 +385,33 @@ class PagerPageHolder(
     private val bubblesPrefs: BubblesPanelsPreferences by lazy { Injekt.get() }
     private val pageDetector: PageDetector by lazy { Injekt.get() }
 
-    /** Finds balloons and panels in the page image. Returns an empty list if detection fails. */
-    private fun detectBubbles(imageBytes: ByteArray): List<PageDetection> {
+    /**
+     * Finds balloons and panels in the page image, and how much of the page has artwork outside every panel.
+     * Returns no detections if detection fails.
+     */
+    private fun detectBubbles(imageBytes: ByteArray): Pair<List<PageDetection>, Float> {
         val threshold = bubblesPrefs.detectionConfidence().get()
-        val bitmap = decodeForDetection(imageBytes) ?: return emptyList()
+        val bitmap = decodeForDetection(imageBytes) ?: return emptyList<PageDetection>() to 0f
         return try {
-            pageDetector.detect(listOf(bitmap)).first().filter { it.score >= threshold }
+            val found = pageDetector.detect(listOf(bitmap)).first().filter { it.score >= threshold }
+            found to measureInkOutsidePanels(bitmap, found.filter { it.kind == DetectionKind.PANEL })
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Balloon detection failed" }
-            emptyList()
+            emptyList<PageDetection>() to 0f
         } finally {
             bitmap.recycle()
         }
+    }
+
+    /** Measures artwork outside [panels] on a copy of the page at the model's small input size. */
+    private fun measureInkOutsidePanels(bitmap: Bitmap, panels: List<PageDetection>): Float {
+        val width = pageDetector.inputWidth
+        val height = pageDetector.inputHeight
+        val small = Bitmap.createScaledBitmap(bitmap, width, height, true)
+        val pixels = IntArray(width * height)
+        small.getPixels(pixels, 0, width, 0, 0, width, height)
+        if (small !== bitmap) small.recycle()
+        return inkOutsidePanels(pixels, width, height, panels)
     }
 
     /** Decodes a copy of the page no larger than the model's input, so detection uses little memory. */

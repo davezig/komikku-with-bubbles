@@ -58,6 +58,11 @@ object SettingsBubblesPanelsScreen : SearchableSettings {
                 title = stringResource(KMR.strings.pref_bubbles_balloon_zoom_factor),
                 subtitle = stringResource(KMR.strings.pref_bubbles_balloon_zoom_factor_summary),
             ),
+            Preference.PreferenceItem.SwitchPreference(
+                preference = prefs.panelViewFullPageAfterLast(),
+                title = stringResource(KMR.strings.pref_bubbles_panel_view_full_page_after),
+                subtitle = stringResource(KMR.strings.pref_bubbles_panel_view_full_page_after_summary),
+            ),
         )
     }
 }
