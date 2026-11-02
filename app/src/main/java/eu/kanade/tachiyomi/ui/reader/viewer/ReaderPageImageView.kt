@@ -34,11 +34,11 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_IN_OUT
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_OUT_QUAD
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 import com.github.chrisbanes.photoview.PhotoView
-import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
-import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
+import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
+import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale

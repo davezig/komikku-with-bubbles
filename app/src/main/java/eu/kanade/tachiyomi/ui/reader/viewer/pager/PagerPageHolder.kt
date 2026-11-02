@@ -10,9 +10,9 @@ import androidx.core.view.isVisible
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
-import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetector
+import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
@@ -36,10 +36,10 @@ import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.decoder.ImageDecoder
 import tachiyomi.i18n.MR
-import kotlin.math.max
-import kotlin.math.min
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * View of the ViewPager that contains a page of a chapter.
