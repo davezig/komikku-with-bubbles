@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.view.LayoutInflater
 import androidx.annotation.ColorInt
 import androidx.core.view.isVisible
@@ -10,7 +11,10 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
+import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
+import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetector
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -33,6 +37,9 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.decoder.ImageDecoder
 import tachiyomi.i18n.MR
 import kotlin.math.max
+import kotlin.math.min
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * View of the ViewPager that contains a page of a chapter.
@@ -180,6 +187,11 @@ class PagerPageHolder(
         val streamFn = page.stream ?: return
         val streamFn2 = extraPage?.stream
 
+        // KMK -->
+        var detections: List<PageDetection> = emptyList()
+        val showOutlines = bubblesPrefs.showDetectionOutlines().get()
+        // KMK <--
+
         try {
             val (source, isAnimated, background) = withIOContext {
                 streamFn().buffered(16).use { source ->
@@ -197,6 +209,11 @@ class PagerPageHolder(
                         }
                         // SY <--
                         val isAnimated = ImageUtil.isAnimatedAndSupported(itemSource)
+                        // KMK -->
+                        if (showOutlines && !isAnimated) {
+                            detections = detectBubbles(itemSource.peek())
+                        }
+                        // KMK <--
                         val background = if (!isAnimated && viewer.config.automaticBackground) {
                             ImageUtil.chooseBackground(context, itemSource.peek())
                         } else {
@@ -226,6 +243,9 @@ class PagerPageHolder(
                 if (!isAnimated) {
                     pageBackground = background
                 }
+                // KMK -->
+                setBubbleDetections(detections)
+                // KMK <--
                 removeErrorLayout()
             }
         } catch (e: Throwable) {
@@ -346,6 +366,35 @@ class PagerPageHolder(
             imageSource
         }
     }
+
+    // KMK -->
+    private val bubblesPrefs: BubblesPanelsPreferences by lazy { Injekt.get() }
+    private val pageDetector: PageDetector by lazy { Injekt.get() }
+
+    /** Finds balloons and panels in the page image that is about to be shown. */
+    private fun detectBubbles(pageImage: BufferedSource): List<PageDetection> {
+        val threshold = bubblesPrefs.detectionConfidence().get()
+        val bitmap = decodeForDetection(pageImage.readByteArray()) ?: return emptyList()
+        return try {
+            pageDetector.detect(listOf(bitmap)).first().filter { it.score >= threshold }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    /** Decodes a copy of the page no larger than the model's input, so detection uses little memory. */
+    private fun decodeForDetection(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val sample = max(
+            1,
+            min(bounds.outWidth / pageDetector.inputWidth, bounds.outHeight / pageDetector.inputHeight),
+        )
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+    // KMK <--
 
     private fun decodeImage(imageSource: BufferedSource): Bitmap? {
         return try {

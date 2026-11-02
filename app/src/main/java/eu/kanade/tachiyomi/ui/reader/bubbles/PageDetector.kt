@@ -22,8 +22,9 @@ class PageDetector(context: Context) : Closeable {
     /** How many pages the model processes in one call. */
     val batchSize: Int
 
-    private val inputHeight: Int
-    private val inputWidth: Int
+    /** Height and width, in pixels, of the image the model expects. */
+    val inputHeight: Int
+    val inputWidth: Int
     private val maxDetections: Int
 
     init {

@@ -34,6 +34,8 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_IN_OUT
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_OUT_QUAD
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 import com.github.chrisbanes.photoview.PhotoView
+import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
+import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
@@ -68,6 +70,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private var pageView: View? = null
 
+    // KMK -->
+    private var outlineView: BubbleOutlineView? = null
+    // KMK <--
+
     private var config: Config? = null
 
     var onImageLoaded: (() -> Unit)? = null
@@ -84,6 +90,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
     open fun onImageLoaded() {
         onImageLoaded?.invoke()
         background = pageBackground
+        // KMK -->
+        outlineView?.invalidate()
+        // KMK <--
     }
 
     @CallSuper
@@ -174,6 +183,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
             setNonAnimatedImage(source, config)
         }
     }
+
+    // KMK -->
+    /** Shows detected balloon and panel outlines over the page. An empty list hides them. */
+    fun setBubbleDetections(detections: List<PageDetection>) {
+        val overlay = outlineView ?: return
+        overlay.detections = detections
+        overlay.isVisible = detections.isNotEmpty()
+        overlay.invalidate()
+    }
+    // KMK <--
 
     fun recycle() = pageView?.let {
         when (it) {
@@ -267,6 +286,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private fun prepareNonAnimatedImageView() {
         if (pageView is SubsamplingScaleImageView) return
+        // KMK -->
+        outlineView?.let { removeView(it) }
+        outlineView = null
+        // KMK <--
         removeView(pageView)
 
         pageView = if (isWebtoon) {
@@ -282,16 +305,28 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 object : SubsamplingScaleImageView.OnStateChangedListener {
                     override fun onScaleChanged(newScale: Float, origin: Int) {
                         this@ReaderPageImageView.onScaleChanged(newScale)
+                        // KMK -->
+                        outlineView?.invalidate()
+                        // KMK <--
                     }
 
                     override fun onCenterChanged(newCenter: PointF?, origin: Int) {
-                        // Not used
+                        // KMK -->
+                        outlineView?.invalidate()
+                        // KMK <--
                     }
                 },
             )
             setOnClickListener { this@ReaderPageImageView.onViewClicked() }
         }
         addView(pageView, MATCH_PARENT, MATCH_PARENT)
+        // KMK -->
+        outlineView = BubbleOutlineView(context).also { overlay ->
+            overlay.source = pageView as? SubsamplingScaleImageView
+            overlay.isVisible = false
+            addView(overlay, MATCH_PARENT, MATCH_PARENT)
+        }
+        // KMK <--
     }
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
