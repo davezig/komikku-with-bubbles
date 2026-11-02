@@ -37,8 +37,13 @@ import com.github.chrisbanes.photoview.PhotoView
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
+import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleMagnifier
 import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
+import eu.kanade.tachiyomi.ui.reader.bubbles.DetectionKind
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
+import eu.kanade.tachiyomi.ui.reader.bubbles.paddedRegion
+import eu.kanade.tachiyomi.ui.reader.bubbles.placeMagnifier
+import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
@@ -72,6 +77,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     // KMK -->
     private var outlineView: BubbleOutlineView? = null
+    private val bubblesPreferences by lazy { Injekt.get<BubblesPanelsPreferences>() }
+    private val bubbleMagnifier by lazy { BubbleMagnifier(this) }
+    private var bubbleDetections: List<PageDetection> = emptyList()
+    private var bubbleImageBytes: ByteArray? = null
     // KMK <--
 
     private var config: Config? = null
@@ -111,6 +120,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     open fun onPageSelected(forward: Boolean) {
+        // KMK -->
+        dismissBubbleZoom()
+        // KMK <--
         with(pageView as? SubsamplingScaleImageView) {
             if (this == null) return
             if (isReady) {
@@ -185,12 +197,68 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     // KMK -->
-    /** Shows detected balloon and panel outlines over the page. An empty list hides them. */
-    fun setBubbleDetections(detections: List<PageDetection>) {
+    /**
+     * Sets the balloons and panels found on this page and the page's image file, used to magnify a tapped
+     * balloon. Outlines are drawn only when the outline setting is on.
+     */
+    fun setBubbleData(detections: List<PageDetection>, imageBytes: ByteArray?) {
+        dismissBubbleZoom()
+        bubbleDetections = detections
+        bubbleImageBytes = imageBytes
         val overlay = outlineView ?: return
         overlay.detections = detections
-        overlay.isVisible = detections.isNotEmpty()
+        overlay.isVisible = detections.isNotEmpty() && bubblesPreferences.showDetectionOutlines().get()
         overlay.invalidate()
+    }
+
+    /**
+     * Handles a tap at ([x], [y]) in this view's coordinates. Returns true when the tap was used: it opened a
+     * magnified balloon, or it closed one. Returns false when the reader should handle the tap as usual.
+     */
+    fun handleBubbleTap(x: Float, y: Float): Boolean {
+        if (bubbleMagnifier.isShowing) {
+            if (!bubbleMagnifier.contains(x, y)) dismissBubbleZoom()
+            return true
+        }
+        val image = pageView as? SubsamplingScaleImageView ?: return false
+        val bytes = bubbleImageBytes ?: return false
+        if (!image.isReady || image.sWidth <= 0 || image.sHeight <= 0) return false
+        val source = image.viewToSourceCoord(x, y) ?: return false
+        val fractionX = source.x / image.sWidth
+        val fractionY = source.y / image.sHeight
+        val balloon = bubbleDetections
+            .filter { it.kind == DetectionKind.SPEECH_BALLOON }
+            .filter { fractionX in it.left..it.right && fractionY in it.top..it.bottom }
+            .minByOrNull { (it.right - it.left) * (it.bottom - it.top) }
+            ?: return false
+
+        val region = paddedRegion(balloon, BUBBLE_ZOOM_PADDING)
+        val topLeft = image.sourceToViewCoord(region.left * image.sWidth, region.top * image.sHeight)
+            ?: return false
+        val bottomRight = image.sourceToViewCoord(region.right * image.sWidth, region.bottom * image.sHeight)
+            ?: return false
+        val placement = placeMagnifier(
+            balloonLeft = topLeft.x,
+            balloonTop = topLeft.y,
+            balloonRight = bottomRight.x,
+            balloonBottom = bottomRight.y,
+            factor = bubblesPreferences.balloonZoomFactor().get(),
+            hostWidth = width.toFloat(),
+            hostHeight = height.toFloat(),
+            margin = 8 * resources.displayMetrics.density,
+        )
+        bubbleMagnifier.show(bytes, region, placement)
+        return true
+    }
+
+    /** Closes the magnified balloon, if one is shown. */
+    fun dismissBubbleZoom() {
+        bubbleMagnifier.dismiss()
+    }
+
+    override fun onDetachedFromWindow() {
+        dismissBubbleZoom()
+        super.onDetachedFromWindow()
     }
     // KMK <--
 
@@ -307,12 +375,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         this@ReaderPageImageView.onScaleChanged(newScale)
                         // KMK -->
                         outlineView?.invalidate()
+                        dismissBubbleZoom()
                         // KMK <--
                     }
 
                     override fun onCenterChanged(newCenter: PointF?, origin: Int) {
                         // KMK -->
                         outlineView?.invalidate()
+                        dismissBubbleZoom()
                         // KMK <--
                     }
                 },
@@ -518,3 +588,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
 }
 
 private const val MAX_ZOOM_SCALE = 5F
+
+// KMK -->
+// Extra space around a magnified balloon, as a fraction of its size on each side.
+private const val BUBBLE_ZOOM_PADDING = 0.06f
+// KMK <--

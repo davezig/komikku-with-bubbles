@@ -19,12 +19,14 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import okio.Buffer
 import okio.BufferedSource
@@ -188,8 +190,7 @@ class PagerPageHolder(
         val streamFn2 = extraPage?.stream
 
         // KMK -->
-        var detections: List<PageDetection> = emptyList()
-        val showOutlines = bubblesPrefs.showDetectionOutlines().get()
+        var bubbleImageBytes: ByteArray? = null
         // KMK <--
 
         try {
@@ -210,8 +211,8 @@ class PagerPageHolder(
                         // SY <--
                         val isAnimated = ImageUtil.isAnimatedAndSupported(itemSource)
                         // KMK -->
-                        if (showOutlines && !isAnimated) {
-                            detections = detectBubbles(itemSource.peek())
+                        if (!isAnimated) {
+                            bubbleImageBytes = itemSource.peek().readByteArray()
                         }
                         // KMK <--
                         val background = if (!isAnimated && viewer.config.automaticBackground) {
@@ -244,10 +245,17 @@ class PagerPageHolder(
                     pageBackground = background
                 }
                 // KMK -->
-                setBubbleDetections(detections)
+                setBubbleData(emptyList(), null)
                 // KMK <--
                 removeErrorLayout()
             }
+            // KMK -->
+            // Find balloons after the page is shown, so detection never delays the image.
+            bubbleImageBytes?.let { bytes ->
+                val found = withContext(Dispatchers.Default) { detectBubbles(bytes) }
+                withUIContext { setBubbleData(found, bytes) }
+            }
+            // KMK <--
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e)
             withUIContext {
@@ -371,12 +379,15 @@ class PagerPageHolder(
     private val bubblesPrefs: BubblesPanelsPreferences by lazy { Injekt.get() }
     private val pageDetector: PageDetector by lazy { Injekt.get() }
 
-    /** Finds balloons and panels in the page image that is about to be shown. */
-    private fun detectBubbles(pageImage: BufferedSource): List<PageDetection> {
+    /** Finds balloons and panels in the page image. Returns an empty list if detection fails. */
+    private fun detectBubbles(imageBytes: ByteArray): List<PageDetection> {
         val threshold = bubblesPrefs.detectionConfidence().get()
-        val bitmap = decodeForDetection(pageImage.readByteArray()) ?: return emptyList()
+        val bitmap = decodeForDetection(imageBytes) ?: return emptyList()
         return try {
             pageDetector.detect(listOf(bitmap)).first().filter { it.score >= threshold }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Balloon detection failed" }
+            emptyList()
         } finally {
             bitmap.recycle()
         }

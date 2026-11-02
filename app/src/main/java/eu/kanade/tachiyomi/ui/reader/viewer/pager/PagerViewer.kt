@@ -117,7 +117,10 @@ abstract class PagerViewer(
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
-        pager.tapListener = { event ->
+        pager.tapListener = tap@{ event ->
+            // KMK -->
+            if (handleBubbleTap(event)) return@tap
+            // KMK <--
             val viewPosition = IntArray(2)
             pager.getLocationOnScreen(viewPosition)
             val viewPositionRelativeToWindow = IntArray(2)
@@ -183,6 +186,17 @@ abstract class PagerViewer(
     override fun getView(): View {
         return pager
     }
+
+    // KMK -->
+    /** Lets the current page open or close a magnified balloon. Returns true if it used the tap. */
+    private fun handleBubbleTap(event: MotionEvent): Boolean {
+        val page = adapter.joinedItems.getOrNull(pager.currentItem)?.first as? ReaderPage ?: return false
+        val holder = getPageHolder(page) ?: return false
+        val holderPosition = IntArray(2)
+        holder.getLocationOnScreen(holderPosition)
+        return holder.handleBubbleTap(event.rawX - holderPosition[0], event.rawY - holderPosition[1])
+    }
+    // KMK <--
 
     /**
      * Returns the PagerPageHolder for the provided page
