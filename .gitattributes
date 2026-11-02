@@ -25,3 +25,4 @@
 
 # On-device models
 *.tflite binary
+*.keystore binary

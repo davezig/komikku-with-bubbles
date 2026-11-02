@@ -40,6 +40,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // KMK -->
+    // Fixed debug key so each CI debug build can install over the previous one.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+    // KMK <--
+
     buildTypes {
         val debug by getting {
             applicationIdSuffix = ".dev"
