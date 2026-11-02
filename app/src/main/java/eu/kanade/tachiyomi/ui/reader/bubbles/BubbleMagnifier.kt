@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 
 // KMK -->
 /** Where the magnified balloon is drawn, in the host view's coordinates. */
-internal data class MagnifierPlacement(
+data class MagnifierPlacement(
     val left: Float,
     val top: Float,
     val width: Float,
