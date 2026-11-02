@@ -86,6 +86,10 @@ class PagerPageHolder(
     private var extraLoadJob: Job? = null
 
     init {
+        // KMK -->
+        bubbleReadRightToLeft = viewer is R2LPagerViewer
+        onBubbleNextPage = { viewer.moveToNext() }
+        // KMK <--
         loadJob = scope.launch { loadPageAndProcessStatus(1) }
         // SY -->
         extraLoadJob = scope.launch { loadPageAndProcessStatus(2) }

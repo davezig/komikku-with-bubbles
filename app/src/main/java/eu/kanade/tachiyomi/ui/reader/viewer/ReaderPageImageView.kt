@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PointF
 import android.graphics.RectF
@@ -10,6 +11,7 @@ import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
 import androidx.annotation.AttrRes
@@ -41,6 +43,7 @@ import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleMagnifier
 import eu.kanade.tachiyomi.ui.reader.bubbles.BubbleOutlineView
 import eu.kanade.tachiyomi.ui.reader.bubbles.DetectionKind
 import eu.kanade.tachiyomi.ui.reader.bubbles.PageDetection
+import eu.kanade.tachiyomi.ui.reader.bubbles.balloonReadingOrder
 import eu.kanade.tachiyomi.ui.reader.bubbles.paddedRegion
 import eu.kanade.tachiyomi.ui.reader.bubbles.placeMagnifier
 import eu.kanade.tachiyomi.ui.reader.setting.BubblesPanelsPreferences
@@ -52,6 +55,7 @@ import okio.BufferedSource
 import tachiyomi.core.common.util.system.ImageUtil
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.abs
 
 /**
  * A wrapper view for showing page image.
@@ -81,6 +85,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private val bubbleMagnifier by lazy { BubbleMagnifier(this) }
     private var bubbleDetections: List<PageDetection> = emptyList()
     private var bubbleImageBytes: ByteArray? = null
+    private var magnifiedBalloon: PageDetection? = null
+    private val touchStarts = HashMap<Int, PointF>()
+    private var isTwoFingerTap = false
     // KMK <--
 
     private var config: Config? = null
@@ -197,6 +204,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     // KMK -->
+    /** Whether balloons on this page are read right to left. */
+    var bubbleReadRightToLeft: Boolean = false
+
+    /** Called when a two-finger tap is made while the page's last balloon is magnified. */
+    var onBubbleNextPage: (() -> Unit)? = null
+
     /**
      * Sets the balloons and panels found on this page and the page's image file, used to magnify a tapped
      * balloon. Outlines are drawn only when the outline setting is on.
@@ -212,17 +225,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     /**
-     * Handles a tap at ([x], [y]) in this view's coordinates. Returns true when the tap was used: it opened a
-     * magnified balloon, or it closed one. Returns false when the reader should handle the tap as usual.
+     * Handles a one-finger tap at ([x], [y]) in this view's coordinates. Returns true when the tap was used: it
+     * closed the magnified balloon, or it opened one. Returns false when the reader should handle the tap as usual.
      */
     fun handleBubbleTap(x: Float, y: Float): Boolean {
         if (bubbleMagnifier.isShowing) {
-            if (!bubbleMagnifier.contains(x, y)) dismissBubbleZoom()
+            dismissBubbleZoom()
             return true
         }
-        val image = pageView as? SubsamplingScaleImageView ?: return false
-        val bytes = bubbleImageBytes ?: return false
-        if (!image.isReady || image.sWidth <= 0 || image.sHeight <= 0) return false
+        val image = readyBubbleImage() ?: return false
         val source = image.viewToSourceCoord(x, y) ?: return false
         val fractionX = source.x / image.sWidth
         val fractionY = source.y / image.sHeight
@@ -231,7 +242,34 @@ open class ReaderPageImageView @JvmOverloads constructor(
             .filter { fractionX in it.left..it.right && fractionY in it.top..it.bottom }
             .minByOrNull { (it.right - it.left) * (it.bottom - it.top) }
             ?: return false
+        return showBubbleZoom(image, balloon)
+    }
 
+    /** Closes the magnified balloon, if one is shown. */
+    fun dismissBubbleZoom() {
+        bubbleMagnifier.dismiss()
+        magnifiedBalloon = null
+    }
+
+    /** Moves the magnifier to the next balloon in reading order, or to the next page after the last balloon. */
+    private fun showNextBubble() {
+        val image = readyBubbleImage()
+        val current = magnifiedBalloon
+        val order = balloonReadingOrder(bubbleDetections, bubbleReadRightToLeft)
+        val next = current?.let { order.getOrNull(order.indexOf(it) + 1) }
+        if (image != null && next != null && showBubbleZoom(image, next)) return
+        dismissBubbleZoom()
+        onBubbleNextPage?.invoke()
+    }
+
+    private fun readyBubbleImage(): SubsamplingScaleImageView? {
+        val image = pageView as? SubsamplingScaleImageView ?: return null
+        if (bubbleImageBytes == null || !image.isReady || image.sWidth <= 0 || image.sHeight <= 0) return null
+        return image
+    }
+
+    private fun showBubbleZoom(image: SubsamplingScaleImageView, balloon: PageDetection): Boolean {
+        val bytes = bubbleImageBytes ?: return false
         val region = paddedRegion(balloon, BUBBLE_ZOOM_PADDING)
         val topLeft = image.sourceToViewCoord(region.left * image.sWidth, region.top * image.sHeight)
             ?: return false
@@ -248,12 +286,56 @@ open class ReaderPageImageView @JvmOverloads constructor(
             margin = 8 * resources.displayMetrics.density,
         )
         bubbleMagnifier.show(bytes, region, placement)
+        magnifiedBalloon = balloon
         return true
     }
 
-    /** Closes the magnified balloon, if one is shown. */
-    fun dismissBubbleZoom() {
-        bubbleMagnifier.dismiss()
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        // While a balloon is magnified, keep touches from the page so a two-finger tap doesn't zoom it.
+        if (bubbleMagnifier.isShowing) return true
+        return super.onInterceptTouchEvent(ev)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!bubbleMagnifier.isShowing) return super.onTouchEvent(event)
+        trackTwoFingerTap(event)
+        return true
+    }
+
+    /** Detects a quick two-finger tap that barely moves, and then shows the next balloon. */
+    private fun trackTwoFingerTap(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchStarts.clear()
+                touchStarts[event.getPointerId(0)] = PointF(event.x, event.y)
+                isTwoFingerTap = false
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                val index = event.actionIndex
+                touchStarts[event.getPointerId(index)] = PointF(event.getX(index), event.getY(index))
+                isTwoFingerTap = event.pointerCount == 2
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val slop = ViewConfiguration.get(context).scaledTouchSlop
+                for (index in 0 until event.pointerCount) {
+                    val start = touchStarts[event.getPointerId(index)] ?: continue
+                    if (abs(event.getX(index) - start.x) > slop || abs(event.getY(index) - start.y) > slop) {
+                        isTwoFingerTap = false
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val quick = event.eventTime - event.downTime <= ViewConfiguration.getLongPressTimeout()
+                if (isTwoFingerTap && quick) showNextBubble()
+                isTwoFingerTap = false
+                touchStarts.clear()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                isTwoFingerTap = false
+                touchStarts.clear()
+            }
+        }
     }
 
     override fun onDetachedFromWindow() {
